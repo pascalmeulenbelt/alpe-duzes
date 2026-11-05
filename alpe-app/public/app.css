@@ -167,6 +167,7 @@ table.sched { border-collapse: collapse; width: 100%; min-width: 640px; font-siz
 
 /* app-uitbreidingen */
 .syncbar a.btn { text-decoration: none; display: inline-block }
+.btn.connected { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--ok); border-color: var(--ok); font-weight: 600; cursor: default }
 .session.skipped { opacity: .6 }
 .session.skipped .steps, .session.skipped .note { display: none }
 .chip.warn { background: var(--sign); color: var(--sign-ink) }

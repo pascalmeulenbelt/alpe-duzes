@@ -300,9 +300,19 @@
   }
 
   // ---------- Strava ----------
+  const inFrame = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
   function renderStravaBar() {
     const st = $("stravaState");
-    $("connectBtn").hidden = !!(me && me.connected);
+    const cb = $("connectBtn"), on = !!(me && me.connected);
+    cb.hidden = !me;
+    cb.classList.toggle("connected", on);
+    cb.classList.toggle("primary", !on);
+    if (on) { cb.removeAttribute("href"); cb.setAttribute("aria-disabled", "true"); cb.textContent = "✓ Verbonden met Strava"; cb.title = "Strava is gekoppeld" + (me.firstname ? " (" + me.firstname + ")" : ""); }
+    else {
+      cb.setAttribute("href", "/api/auth/start"); cb.removeAttribute("aria-disabled"); cb.textContent = "Koppel Strava"; cb.title = "";
+      // Strava laat zijn inlogpagina niet in een frame zien; open dan een nieuw tabblad.
+      if (inFrame) { cb.target = "_blank"; cb.rel = "noopener"; } else { cb.removeAttribute("target"); cb.removeAttribute("rel"); }
+    }
     $("syncBtn").hidden = !(me && me.connected);
     $("logoutBtn").hidden = !(me && me.connected);
     const ap = $("ftpApply");
@@ -415,9 +425,18 @@
   loadHistCache();
   syncInputs(); route();
   (async function () {
+    const qs = new URLSearchParams(location.search), back = qs.get("strava"), reason = qs.get("reason");
+    if (back) { qs.delete("strava"); qs.delete("reason"); history.replaceState(null, "", location.pathname + (qs.toString() ? "?" + qs : "") + location.hash); }
     try { me = await api("/api/me"); }
     catch (e) { me = { connected: false, offline: true }; }
     renderStravaBar();
+    if (back === "ok") toast(me.connected ? "Strava is gekoppeld" + (me.firstname ? ", " + me.firstname : "") + "." : "Koppelen is niet gelukt. Probeer het opnieuw.");
+    else if (back === "denied") toast("Koppelen geannuleerd op Strava.");
+    else if (back === "error") toast({
+      state: "Koppelen verlopen of onderbroken. Klik opnieuw op Koppel Strava.",
+      scope: "Zet het vinkje bij 'Bekijk gegevens over je activiteiten' aan en koppel opnieuw.",
+      token: "Strava weigerde de koppeling. Controleer Client ID en Client Secret in Netlify."
+    }[reason] || "Koppelen is niet gelukt. Probeer het opnieuw.");
     if (me.connected) {
       await loadCloudState();
       await syncStrava();

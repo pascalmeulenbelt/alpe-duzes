@@ -1,10 +1,13 @@
 // Strava stuurt je hier terug na toestemming.
 import { exchangeCode, getCookie, sessionCookie } from "../lib/session.mjs";
 
-function back() {
-  const h = new Headers({ Location: "/#week" });
+// Terug naar de app, met de uitkomst in de URL zodat de app een melding kan tonen.
+function back(result, reason) {
+  const q = new URLSearchParams({ strava: result });
+  if (reason) q.set("reason", reason);
+  const h = new Headers({ Location: "/?" + q + "#week" });
   h.append("Set-Cookie", "alpe_st=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
-  return h;
+  return new Response(null, { status: 302, headers: h });
 }
 
 export default async (req) => {
@@ -15,21 +18,25 @@ export default async (req) => {
   const expected = getCookie(req, "alpe_st");
 
   if (u.searchParams.get("error")) {
-    return new Response(null, { status: 302, headers: back() });
+    console.warn("Strava-koppeling geweigerd:", u.searchParams.get("error"));
+    return back("denied");
   }
   if (!code || !state || state !== expected) {
-    return new Response("Koppelen mislukt: ongeldige of verlopen aanvraag. Ga terug naar de app en probeer opnieuw.", { status: 400 });
+    console.warn("Strava-koppeling: state ontbreekt of klopt niet", { hasCode: !!code, hasState: !!state, hasCookie: !!expected });
+    return back("error", "state");
   }
   if (!/activity:read_all/.test(scope)) {
-    return new Response("Geef de app toegang tot je activiteiten (vinkje bij 'Bekijk gegevens over je activiteiten'), anders kan hij je ritten niet koppelen. Ga terug en probeer opnieuw.", { status: 400 });
+    console.warn("Strava-koppeling: te weinig rechten, scope =", scope);
+    return back("error", "scope");
   }
   try {
     const sess = await exchangeCode(code);
-    const h = back();
-    h.append("Set-Cookie", sessionCookie(sess));
-    return new Response(null, { status: 302, headers: h });
+    const res = back("ok");
+    res.headers.append("Set-Cookie", sessionCookie(sess));
+    return res;
   } catch (e) {
-    return new Response("Koppelen mislukt: " + e.message, { status: 502 });
+    console.error("Strava-koppeling: token ophalen mislukt:", e.message);
+    return back("error", "token");
   }
 };
 
