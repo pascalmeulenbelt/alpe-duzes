@@ -207,3 +207,10 @@ table.sched { border-collapse: collapse; width: 100%; min-width: 640px; font-siz
 .hchart text.lbl { fill: var(--fg); font-size: 10.5px }
 .hchart g.pl { cursor: pointer }
 .hchart g.hb:hover rect + rect { opacity: .8 }
+#zwiftHelp p { margin: 6px 0 10px; line-height: 1.5 }
+#zwiftHelp .zlist { margin: 0 0 10px; padding-left: 20px; line-height: 1.5 }
+#zwiftHelp .zlist li { margin-bottom: 4px }
+#zwiftHelp code { font-size: 13px; background: color-mix(in srgb, var(--line) 50%, transparent); padding: 1px 4px; border-radius: 4px }
+.icubar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; max-width: 72ch }
+.icubar span { flex: 1 1 260px; font-size: 14px; color: var(--muted) }
+.icubar span b { display: block; color: var(--fg); font-family: var(--font-display); text-transform: uppercase; letter-spacing: .06em; font-size: 14px }

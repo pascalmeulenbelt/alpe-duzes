@@ -198,5 +198,34 @@
     return result;
   }
 
-  g.AlpeLogic = { adapt, score, match, plannedZones, actualZones, overlap, zoneOf };
+  // ---------- Zwift-export (.zwo) ----------
+  // Zwift heeft geen publieke API om trainingen naar je profiel te sturen. Wel leest Zwift
+  // eigen trainingen uit Documenten/Zwift/Workouts/<jouw Zwift-id>/ en zet ze in je profiel.
+  // Vermogen in .zwo is een fractie van FTP, dus de training schaalt mee met je FTP in Zwift.
+  const xml = (t) => String(t == null ? "" : t).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]));
+  const frac = (p) => (Math.round(p * 10) / 1000).toFixed(3);
+  function toZwo(w, opts) {
+    const o = opts || {};
+    const steps = w.steps.filter((s) => s[0] > 0);
+    const last = steps.length - 1;
+    const body = steps.map((s, i) => {
+      const dur = Math.round(s[0] * 60);
+      const msg = s[4] ? s[3] + ": " + s[4] : s[3];
+      const txt = "<textevent timeoffset=\"0\" message=\"" + xml(msg) + "\"/>";
+      if (s[1] == null) return "    <FreeRide Duration=\"" + dur + "\" FlatRoad=\"1\">" + txt + "</FreeRide>";
+      const lo = frac(s[1]), hi = frac(s[2]);
+      if (i === 0 && isWarm(s)) return "    <Warmup Duration=\"" + dur + "\" PowerLow=\"" + lo + "\" PowerHigh=\"" + hi + "\">" + txt + "</Warmup>";
+      if (i === last && isCool(s)) return "    <Cooldown Duration=\"" + dur + "\" PowerLow=\"" + hi + "\" PowerHigh=\"" + lo + "\">" + txt + "</Cooldown>";
+      return "    <SteadyState Duration=\"" + dur + "\" Power=\"" + frac((s[1] + s[2]) / 2) + "\">" + txt + "</SteadyState>";
+    }).join("\n");
+    return "<workout_file>\n" +
+      "  <author>Alpe d'HuZes Plan</author>\n" +
+      "  <name>" + xml(o.name || "Training") + "</name>\n" +
+      "  <description>" + xml(o.description || w.note || "") + "</description>\n" +
+      "  <sportType>bike</sportType>\n" +
+      "  <tags><tag name=\"AlpeDHuZes\"/></tags>\n" +
+      "  <workout>\n" + body + "\n  </workout>\n</workout_file>\n";
+  }
+
+  g.AlpeLogic = { adapt, score, match, plannedZones, actualZones, overlap, zoneOf, toZwo };
 })(typeof window !== "undefined" ? window : globalThis);

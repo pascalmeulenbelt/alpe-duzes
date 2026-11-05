@@ -8,15 +8,16 @@
 
   // ---------- opslag ----------
   const LS = "alpe-state-v1";
-  let state = { v: 1, ftp: 237, kg: 80, done: {}, ov: {}, links: {}, unlinks: {}, updatedAt: 0 };
+  let state = { v: 1, ftp: 237, kg: 80, done: {}, ov: {}, links: {}, unlinks: {}, icu: {}, updatedAt: 0 };
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function normalize(s) {
-    return Object.assign({ v: 1, ftp: 237, kg: 80, done: {}, ov: {}, links: {}, unlinks: {}, updatedAt: 0 }, s || {});
+    return Object.assign({ v: 1, ftp: 237, kg: 80, done: {}, ov: {}, links: {}, unlinks: {}, icu: {}, updatedAt: 0 }, s || {});
   }
   try { const raw = lsGet(LS); if (raw) state = normalize(JSON.parse(raw)); } catch (e) {}
 
   let me = null;           // {connected, firstname, ftp, weight}
+  let icu = { configured: false, busy: false }; // intervals.icu ingesteld op de server?
   let acts = [];           // ritten uit Strava
   let hists = {};          // vermogensverdeling per rit-id
   let matches = {};        // sessie-id -> resultaat
@@ -104,6 +105,7 @@
 
   // ---------- weekweergave ----------
   function renderWeek() {
+    renderIcuBar();
     const wk = WEEKS[selWeek];
     const list = weekEff(wk);
     const active = list.filter(function (e) { return !e.skip; });
@@ -282,7 +284,8 @@
       matchBlock(e) +
       (openPanel === e.id ? ovPanel(e, wk) : "") +
       "<div class='s-foot'>" + (e.skip ? "" : (matches[e.id] && matches[e.id].act && !state.done[e.id]) ? "<span class='check' style='color:var(--ok)'>✓ Gedaan via Strava</span>" : "<label class='check' for='c-" + e.id + "'><input type='checkbox' id='c-" + e.id + "'" + (state.done[e.id] ? " checked" : "") + "> Gedaan</label>") +
-      (w.kind === "event" ? "" : "<button class='btn' type='button' data-act='ovopen' data-sid='" + e.id + "' style='margin-left:auto'>" + (openPanel === e.id ? "Sluiten" : "Lukt niet?") + "</button>") + "</div>";
+      (w.kind === "event" || e.skip ? "" : "<button class='btn' type='button' data-act='zwo' data-sid='" + e.id + "' style='margin-left:auto' title='Download als Zwift-training (.zwo)'>Naar Zwift</button>") +
+      (w.kind === "event" ? "" : "<button class='btn' type='button' data-act='ovopen' data-sid='" + e.id + "'" + (e.skip ? " style='margin-left:auto'" : "") + ">" + (openPanel === e.id ? "Sluiten" : "Lukt niet?") + "</button>") + "</div>";
     const cb = el.querySelector("#c-" + e.id);
     if (cb) cb.addEventListener("change", function () {
       if (cb.checked) state.done[e.id] = true; else delete state.done[e.id];
@@ -291,14 +294,90 @@
     return el;
   }
 
+  // ---------- intervals.icu (en via intervals.icu naar Zwift) ----------
+  function findEff(sid) {
+    let e = null;
+    WEEKS.some(function (wk) { e = weekEff(wk).find(function (x) { return x.id === sid; }) || null; return !!e; });
+    return e;
+  }
+  function zwoName(e) {
+    const d = new Date(e.date);
+    const day = String(d.getUTCDate()).padStart(2, "0") + "-" + String(d.getUTCMonth() + 1).padStart(2, "0");
+    return "Alpe " + day + " " + e.title + (e.w.adapted ? " (" + fmtH(minutes(e.w)) + ")" : "");
+  }
+  function zwoText(e) {
+    return L.toZwo(e.w, { name: zwoName(e), description: e.w.note + " Gemaakt voor FTP " + state.ftp + " W; Zwift rekent met de FTP in je Zwift-profiel." });
+  }
+  // Wat er van een week naar intervals.icu gaat: alles vanaf vandaag, behalve overgeslagen en de Alpe-dag zelf.
+  function icuWeek(wk) {
+    const today = todayUTC(), put = [], remove = [];
+    weekEff(wk).forEach(function (e) {
+      if (e.date < today) return;
+      if (e.skip || e.w.kind === "event") { if (state.icu[e.id]) remove.push(e.id); return; }
+      put.push({ id: e.id, date: iso(e.date), name: zwoName(e), zwo: zwoText(e) });
+    });
+    return { put: put, remove: remove };
+  }
+  async function icuSend(wk, quiet) {
+    const p = icuWeek(wk);
+    if (!p.put.length && !p.remove.length) { if (!quiet) toast("Geen trainingen meer om te versturen in deze week."); return; }
+    icu.busy = true; renderIcuBar();
+    try {
+      await api("/api/intervals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workouts: p.put, remove: p.remove }) });
+      const now = Date.now();
+      p.put.forEach(function (x) { state.icu[x.id] = now; });
+      p.remove.forEach(function (id) { delete state.icu[id]; });
+      save();
+      toast(p.put.length + " training" + (p.put.length === 1 ? "" : "en") + " in intervals.icu gezet. Zwift haalt ze daar vandaan.");
+    } catch (err) {
+      toast("intervals.icu: " + err.message);
+    }
+    icu.busy = false; renderIcuBar();
+  }
+  // Na aanpassen of overslaan: stond de training al in intervals.icu, dan meteen bijwerken.
+  function icuResync(sid) {
+    if (!icu.configured || !state.icu[sid]) return;
+    const wk = WEEKS.find(function (w) { return w.sessions.some(function (s) { return s.id === sid; }); });
+    if (wk) icuSend(wk, true);
+  }
+  function renderIcuBar() {
+    const el = $("icuBar");
+    if (!icu.configured || !me || !me.connected) { el.hidden = true; return; }
+    const wk = WEEKS[selWeek], p = icuWeek(wk);
+    const sent = weekEff(wk).filter(function (e) { return state.icu[e.id]; });
+    const last = sent.reduce(function (m, e) { return Math.max(m, state.icu[e.id]); }, 0);
+    el.hidden = false;
+    el.innerHTML = "<span><b>intervals.icu → Zwift</b>" +
+      (last ? "Deze week verstuurd op " + new Date(last).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + "." : "Zet deze week in je intervals.icu-kalender; intervals.icu zet hem in Zwift.") + "</span>" +
+      "<button class='btn primary' type='button' id='icuSend'" + (icu.busy || (!p.put.length && !p.remove.length) ? " disabled" : "") + ">" +
+      (icu.busy ? "Versturen…" : (last ? "Opnieuw versturen" : "Week naar intervals.icu")) + "</button>";
+    $("icuSend").addEventListener("click", function () { icuSend(WEEKS[selWeek]); });
+  }
+  api("/api/intervals").then(function (r) { icu.configured = !!(r && r.configured); renderIcuBar(); }).catch(function () {});
+
+  // Training als Zwift-bestand. Gebruikt de training zoals hij nu staat (ook ingekort).
+  function downloadZwo(sid) {
+    const e = findEff(sid);
+    if (!e) return;
+    const xmlText = zwoText(e);
+    const file = zwoName(e).replace(/[^\w\- ]+/g, "").replace(/\s+/g, "_") + ".zwo";
+    const blob = new Blob([xmlText], { type: "application/xml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = file;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    toast("Gedownload. Zet het bestand in Documenten/Zwift/Workouts/<je Zwift-id>, zie 'Trainingen naar Zwift'.");
+  }
+
   // Klikken in kaarten (aanpassen, koppelen)
   $("sessions").addEventListener("click", function (ev) {
     const b = ev.target.closest("[data-act]");
     if (!b) return;
     const sid = b.dataset.sid, act = b.dataset.act;
+    if (act === "zwo") { downloadZwo(sid); return; }
     if (act === "ovopen") { openPanel = openPanel === sid ? null : sid; renderWeek(); return; }
     if (act === "ovclose") { openPanel = null; renderWeek(); return; }
-    if (act === "ovreset") { delete state.ov[sid]; openPanel = null; save(); rematch(); renderAll(); toast("Training staat weer zoals gepland."); return; }
+    if (act === "ovreset") { delete state.ov[sid]; openPanel = null; save(); rematch(); renderAll(); icuResync(sid); toast("Training staat weer zoals gepland."); return; }
     if (act === "ovsave") {
       const m = $("ovm-" + sid).value, d = $("ovd-" + sid).value, s = $("ovs-" + sid).checked;
       const o = {};
@@ -307,7 +386,7 @@
       if (s) o.skip = true;
       if (Object.keys(o).length) state.ov[sid] = o; else delete state.ov[sid];
       if (s) delete state.done[sid];
-      openPanel = null; save(); rematch(); renderAll();
+      openPanel = null; save(); rematch(); renderAll(); icuResync(sid);
       toast(s ? "Overgeslagen. Volgende training gewoon volgens plan." : (m ? "Aangepast naar " + fmtH(+m) + "." : "Opgeslagen."));
       return;
     }
