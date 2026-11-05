@@ -1,4 +1,5 @@
 [build]
+  base = "alpe-app"
   publish = "public"
   functions = "netlify/functions"
 
