@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Alpe d'HuZes Trainingsplan</title>
+<meta name="theme-color" content="#f2c230">
+<meta name="description" content="Trainingsplan naar 6× Alpe d'Huez op 3 juni 2027, gekoppeld aan Strava.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Alpe">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="plate"><span>nog</span><b class="num" id="daysLeft">210</b>dagen</div>
+      <div><h1>Alpe d'HuZes 2027</h1><small>6× Alpe d'Huez · donderdag 3 juni · wo, vr, zo</small></div>
+    </div>
+    <div class="settings">
+      <label class="field" for="ftp">FTP <input id="ftp" type="number" inputmode="numeric" min="120" max="450" value="237"> W</label>
+      <label class="field" for="kg">Gewicht <input id="kg" type="number" inputmode="decimal" min="45" max="140" step="0.5" value="80"> kg</label>
+    </div>
+    <nav class="tabs" aria-label="Weergave">
+      <a href="#week" data-view="week">Week</a>
+      <a href="#schema" data-view="schema">Schema</a>
+      <a href="#alpe" data-view="alpe">Rekenmodel</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap strip">
+  <div class="strip-bar" id="stripBar" aria-label="Weken van het plan"></div>
+  <div class="strip-labels" id="stripLabels"></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<main class="wrap">
+  <section id="v-week">
+    <div class="syncbar" id="syncbar">
+      <span id="stravaState">Strava-status laden…</span>
+      <a class="btn primary" id="connectBtn" href="/api/auth/start" hidden>Koppel Strava</a>
+      <button class="btn" id="syncBtn" type="button" hidden>Ritten vernieuwen</button>
+      <button class="btn primary" id="ftpApply" type="button" hidden>FTP overnemen</button>
+      <button class="btn" id="logoutBtn" type="button" hidden>Ontkoppel</button>
+    </div>
+    <div class="weekhead">
+      <div>
+        <div class="meta" id="wkMeta">Week 1 · Basis 1</div>
+        <h2 id="wkTitle">9 – 15 november</h2>
+      </div>
+      <div class="pager">
+        <button class="btn" id="prevWk" type="button" aria-label="Vorige week">←</button>
+        <button class="btn" id="todayWk" type="button">Deze week</button>
+        <button class="btn" id="nextWk" type="button" aria-label="Volgende week">→</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>Gepland</span><b id="wkHours">0:00</b></div>
+        <div class="stat"><span>Zone 1–2</span><b id="wkLow">80%</b></div>
+        <div class="stat"><span>Gedaan</span><b id="wkDone">0/3</b></div>
+        <div class="stat"><span>Gereden</span><b id="wkStrava">–</b></div>
+      </div>
+    </div>
+    <div class="focusline" id="wkFocus"></div>
+    <div class="sessions" id="sessions"></div>
+
+    <div class="principles">
+      <h2>Regels van je coach</h2>
+      <ul class="plist">
+        <li><b>Zone 2 is rustig, niet makkelijk</b>65 tot 75% FTP, hartslag onder 145. Praten moet kunnen, maar niet moeiteloos: gaat kletsen heel makkelijk, dan zit je in zone 1. Wattages zijn een startpunt, het gevoel beslist. Ongeveer 80% van je tijd zit hier.</li>
+        <li><b>Cadans 80 tot 90 op de klim</b>Je rijdt nu vaak 60 tot 65 rpm. Op de Alpe kost dat je benen. Elke klimblok heeft een cadansdoel; houd je eraan.</li>
+        <li><b>Monteer een lichte versnelling</b>34 voor en 32 of 34 achter. Zes keer 8% met 80 kg is geen plek voor trots.</li>
+        <li><b>Eten is trainen</b>Vanaf week 9 op elke lange rit 60 g koolhydraten per uur, opbouwend naar 80 tot 90 g. Je darmen moeten het ook leren.</li>
+        <li><b>Houd je FTP actueel</b>Geen aparte test. Staat je FTP in je Strava-profiel, dan kun je hem hier overnemen; anders pas je hem bovenin aan. Alle wattages schuiven mee.</li>
+        <li><b>Gemist is gemist</b>Lukt een training niet, kort hem dan in, verplaats hem binnen de week of sla hem over. Nooit dubbel inhalen. Pak het schema gewoon weer op.</li>
+        <li><b>Eén harde dag, maar dan goed</b>Woensdag is je enige kwaliteitsdag: lange blokken net onder je drempel met kort herstel, zoals Van der Poel. Geen VO2max-gesloop nodig voor zes keer de Alpe.</li>
+        <li><b>Herstelweken zijn heilig</b>Elke vierde week minder. Daar word je sterker, niet tijdens de intervallen.</li>
+      </ul>
+      <div class="focusline" style="margin-top:18px">
+        <b>Waarom zo veel zone 2</b>
+        Pogačar traint ongeveer 80% van zijn tijd laag en 20% hard; zijn coach Iñigo San Millán legt de nadruk op de bovenkant van zone 2 voor vetverbranding en lactaatafvoer. Nils van der Poel bouwde eerst maandenlang een enorme aerobe basis en voegde daarna lange blokken net onder zijn drempel toe. Een meta-analyse uit 2024 (Sports Medicine, 17 studies) vond geen verschil in tijdritprestatie tussen gepolariseerd en piramidaal trainen. Daarom: veel zone 2 zoals de profs, maar met jouw 6 tot 9 uur per week één echte drempelsessie, want met weinig uren verlies je anders FTP.
+      </div>
+    </div>
+  </section>
+
+  <section id="v-schema" hidden>
+    <div id="schemaList"></div>
+  </section>
+
+  <section id="v-alpe" hidden>
+    <div class="calc">
+      <div class="panel">
+        <h2>Jouw Alpe</h2>
+        <p>Bourg-d'Oisans tot Huez: 13,8 km, 1071 hoogtemeters, 21 genummerde bochten. Schuif met je klimvermogen en zie wat zes keer betekent.</p>
+        <div class="range"><label for="cw"><span>Vermogen per klim</span><b class="num" id="cwOut">171 W</b></label><input id="cw" type="range" min="120" max="300" step="1" value="171"></div>
+        <div class="range"><label for="bk"><span>Fiets, bidons, kleding</span><b class="num" id="bkOut">10 kg</b></label><input id="bk" type="range" min="7" max="15" step="0.5" value="10"></div>
+        <div class="range"><label for="nc"><span>Aantal beklimmingen</span><b class="num" id="ncOut">6</b></label><input id="nc" type="range" min="1" max="6" step="1" value="6"></div>
+        <div class="range"><label for="dz"><span>Afdaling en pauze per ronde</span><b class="num" id="dzOut">35 min</b></label><input id="dz" type="range" min="20" max="60" step="5" value="35"></div>
+      </div>
+      <div class="panel">
+        <div class="big">
+          <div class="stat"><span>Per klim</span><b id="cTime">1:43</b></div>
+          <div class="stat"><span>% van FTP</span><b id="cPct">72%</b></div>
+          <div class="stat"><span>W/kg</span><b id="cWkg">2,14</b></div>
+          <div class="stat"><span>VAM</span><b id="cVam">624</b></div>
+          <div class="stat"><span>Klimtijd totaal</span><b id="cTotal">10:18</b></div>
+          <div class="stat"><span>Hele dag</span><b id="cDay">13:48</b></div>
+        </div>
+        <div class="verdict" id="cVerdict"></div>
+        <div class="road" id="road"></div>
+        <p style="margin-top:12px;font-size:12.5px">Rekenmodel van je coach, geen meting: helling 7,8% gemiddeld, rolweerstand 0,005, luchtweerstand bij rechtop klimmen, dunnere lucht op hoogte. Warmte en hoogte kosten tot 10% vermogen bij dezelfde hartslag; schuif de vermogensschuif op de dag zelf dus gerust 10% omlaag om te zien wat dat doet.</p>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="wrap foot">Ritgegevens via de Strava API · Powered by Strava. Je voortgang wordt bewaard bij je eigen Strava-account.</footer>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/plan.js"></script>
+<script src="/logic.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

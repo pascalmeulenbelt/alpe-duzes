@@ -1,0 +1,9 @@
+{
+  "name": "alpe-dhuzes-plan",
+  "private": true,
+  "type": "module",
+  "description": "Trainingsplan naar 6x Alpe d'Huez, met Strava-koppeling",
+  "dependencies": {
+    "@netlify/blobs": "10.7.13"
+  }
+}
