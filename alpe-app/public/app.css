@@ -187,3 +187,23 @@ table.sched { border-collapse: collapse; width: 100%; min-width: 640px; font-siz
 .ovpanel .hint { font-size: 12.5px; color: var(--muted) }
 .ovpanel .actions { display: flex; gap: 8px; flex-wrap: wrap }
 .foot { color: var(--muted); font-size: 12px; padding-block: 0 32px }
+
+/* losse ritten en historie */
+.loose { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px }
+.loose h3 { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin: 0 0 2px }
+.loose p { color: var(--muted); font-size: 13px; margin: 0 0 8px }
+.loose ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
+.loose li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px }
+.loose .d { font-family: var(--font-data); font-size: 12.5px; color: var(--muted); min-width: 78px }
+.loose a { color: var(--accent) }
+.loose .sub { color: var(--muted); font-size: 12.5px }
+.history { margin-top: 18px }
+.hstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 10px }
+.hstats .stat { display: grid; gap: 2px }
+.hstats .stat span { font-size: 12px; color: var(--muted) }
+.hstats .stat b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 500 }
+.hchart svg { width: 100%; height: auto; display: block }
+.hchart text { font-family: var(--font-data); font-size: 10px; fill: var(--muted) }
+.hchart text.lbl { fill: var(--fg); font-size: 10.5px }
+.hchart g.pl { cursor: pointer }
+.hchart g.hb:hover rect + rect { opacity: .8 }

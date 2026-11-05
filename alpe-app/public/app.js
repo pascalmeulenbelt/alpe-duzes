@@ -21,6 +21,12 @@
   let hists = {};          // vermogensverdeling per rit-id
   let matches = {};        // sessie-id -> resultaat
   let lastSync = null;
+  let cachedSync = null;   // tijdstip van de gecachte ritten (nog niet ververst)
+  const ACTS_LS = "alpe-acts-v1";
+  const HIST_WEEKS = 52;   // historie vóór de start van het plan
+  const HIST_START = START - HIST_WEEKS * 7 * DAY;
+  function actTime(a) { return Date.parse(a.date + "T00:00:00Z"); }
+  function weekIdx(t) { return Math.floor((t - START) / (7 * DAY)); }
   let saveTimer = null;
 
   function save() {
@@ -116,6 +122,89 @@
     $("prevWk").disabled = selWeek === 0; $("nextWk").disabled = selWeek === 30;
     const box = $("sessions"); box.innerHTML = "";
     list.forEach(function (e) { box.appendChild(sessionCard(e, wk)); });
+    renderLoose(wk, sun);
+    renderHistory();
+  }
+
+  // Ritten in deze week die aan geen enkele training hangen
+  function renderLoose(wk, sun) {
+    const el = $("looseRides");
+    if (!me || !me.connected || !lastSync) { el.hidden = true; return; }
+    const used = {};
+    Object.keys(matches).forEach(function (k) { if (matches[k] && matches[k].act) used[matches[k].act.id] = true; });
+    const loose = acts.filter(function (a) { const t = actTime(a); return t >= wk.mon && t <= sun && !used[a.id]; })
+      .sort(function (x, y) { return actTime(x) - actTime(y); });
+    if (!loose.length) { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = "<h3>Losse ritten deze week</h3><p>Gereden op een dag zonder training, dus niet automatisch gekoppeld. Ze tellen wel mee in je gereden uren.</p><ul>" +
+      loose.map(function (a) {
+        const parts = [fmtH(a.moving / 60), String(a.km).replace(".", ",") + " km"];
+        if (a.npW || a.avgW) parts.push(Math.round(a.npW || a.avgW) + " W" + (a.npW ? " NP" : " gem."));
+        return "<li><span class='d'>" + dshort(actTime(a)) + "</span><a href='https://www.strava.com/activities/" + esc(a.id) + "' target='_blank' rel='noopener'>" + esc(a.name) + "</a><span class='sub'>" + esc(parts.join(" · ")) + "</span></li>";
+      }).join("") + "</ul>";
+  }
+
+  // ---------- historie ----------
+  function renderHistory() {
+    const el = $("history");
+    if (!me || !me.connected || !lastSync) { el.hidden = true; return; }
+    el.hidden = false;
+    const cur = weekIdx(todayUTC());
+    const first = -HIST_WEEKS, last = Math.min(30, cur);
+    const n = last - first + 1;
+    const hrs = new Array(n).fill(0), cnt = new Array(n).fill(0), km = new Array(n).fill(0);
+    acts.forEach(function (a) {
+      const i = weekIdx(actTime(a)) - first;
+      if (i < 0 || i >= n) return;
+      hrs[i] += (a.moving || 0) / 3600; cnt[i]++; km[i] += a.km || 0;
+    });
+    const curI = cur - first;
+    // afgeronde weken: de lopende week telt nog niet mee in de gemiddelden
+    const avg = function (k) { let s = 0, c = 0; for (let i = curI - k; i < curI; i++) if (i >= 0) { s += hrs[i]; c++; } return c ? s / c : 0; };
+    const sumR = function (arr) { return arr.reduce(function (a, b) { return a + b; }, 0); };
+    const longest = acts.reduce(function (m, a) { return actTime(a) >= HIST_START && (!m || a.moving > m.moving) ? a : m; }, null);
+    const hm = function (h) { return fmtH(Math.round(h * 60)); };
+    $("hStats").innerHTML =
+      "<div class='stat'><span>Gem. laatste 4 wk</span><b>" + hm(avg(4)) + "</b></div>" +
+      "<div class='stat'><span>Gem. laatste 12 wk</span><b>" + hm(avg(12)) + "</b></div>" +
+      "<div class='stat'><span>Ritten, 12 mnd</span><b>" + sumR(cnt) + "</b></div>" +
+      "<div class='stat'><span>Km, 12 mnd</span><b>" + Math.round(sumR(km)).toLocaleString("nl-NL") + "</b></div>" +
+      "<div class='stat'><span>Langste rit</span><b>" + (longest ? fmtH(Math.round(longest.moving / 60)) : "–") + "</b></div>";
+
+    // staafdiagram: uren per week
+    const W = 640, H = 150, padL = 30, padR = 6, top = 10, bottom = 22, ch = H - top - bottom;
+    const max = Math.max(4, Math.ceil(Math.max.apply(null, hrs.concat([0])) / 2) * 2);
+    const bw = (W - padL - padR) / n, gap = Math.min(2, bw * 0.25);
+    const y = function (v) { return top + ch - v / max * ch; };
+    let svg = "<svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='Gereden uren per week, de afgelopen 12 maanden en de weken van het plan'>";
+    for (let v = 0; v <= max; v += max > 8 ? 4 : 2) {
+      svg += "<line x1='" + padL + "' x2='" + (W - padR) + "' y1='" + y(v).toFixed(1) + "' y2='" + y(v).toFixed(1) + "' stroke='var(--line)' stroke-width='1'/>";
+      svg += "<text x='" + (padL - 5) + "' y='" + (y(v) + 3.5).toFixed(1) + "' text-anchor='end'>" + v + "u</text>";
+    }
+    const startX = padL + (0 - first) * bw;
+    svg += "<rect x='" + startX.toFixed(1) + "' y='" + top + "' width='" + (W - padR - startX).toFixed(1) + "' height='" + ch + "' fill='var(--sign)' opacity='.12'/>";
+    svg += "<text class='lbl' x='" + (startX + 4).toFixed(1) + "' y='" + (top + 10) + "'>Plan</text>";
+    let lastMonth = -1;
+    for (let i = 0; i < n; i++) {
+      const wkn = i + first, mon = START + wkn * 7 * DAY, x = padL + i * bw;
+      const month = new Date(mon + 3 * DAY).getUTCMonth();
+      if (month !== lastMonth) {
+        if (lastMonth !== -1 && (i > 1 && i < n - 1)) svg += "<text x='" + (x + bw / 2).toFixed(1) + "' y='" + (H - 6) + "' text-anchor='middle'>" + MONTHS[month].slice(0, 3) + "</text>";
+        lastMonth = month;
+      }
+      const h = hrs[i];
+      const sel = wkn === selWeek, isCur = wkn === cur;
+      const tip = (wkn >= 0 ? "Week " + wkn + " · " : "") + dstr(mon) + " tot " + dstr(mon + 6 * DAY) + ": " + hm(h) + " uur, " + cnt[i] + (cnt[i] === 1 ? " rit" : " ritten") + ", " + Math.round(km[i]) + " km";
+      const fill = isCur ? "var(--sign)" : (wkn >= 0 ? "var(--k-duur)" : "var(--accent)");
+      svg += "<g class='hb" + (wkn >= 0 ? " pl" : "") + "'" + (wkn >= 0 ? " data-w='" + wkn + "'" : "") + "><title>" + esc(tip) + "</title>" +
+        "<rect x='" + x.toFixed(1) + "' y='" + top + "' width='" + bw.toFixed(1) + "' height='" + ch + "' fill='transparent'/>" +
+        (h > 0 ? "<rect x='" + (x + gap / 2).toFixed(1) + "' y='" + y(h).toFixed(1) + "' width='" + Math.max(1, bw - gap).toFixed(1) + "' height='" + Math.max(1, ch - (y(h) - top)).toFixed(1) + "' rx='1.5' fill='" + fill + "'" + (sel ? " stroke='var(--fg)' stroke-width='1.5'" : "") + "/>" : "") + "</g>";
+    }
+    svg += "</svg>";
+    $("hChart").innerHTML = svg;
+    $("hChart").querySelectorAll("g.pl").forEach(function (g) {
+      g.addEventListener("click", function () { selWeek = +g.dataset.w; openPanel = null; renderAll(); });
+    });
   }
 
   function stepRows(w) {
@@ -135,19 +224,19 @@
       const a = m.act, sc = m.sc;
       const parts = [fmtH(a.moving / 60)];
       if (a.npW || a.avgW) parts.push(Math.round(a.npW || a.avgW) + " W" + (a.npW ? " NP" : " gem."));
-      parts.push("duur " + pct(sc.dur));
+      parts.push("overeenkomst " + pct(sc.total) + ": duur " + pct(sc.dur));
       if (sc.zones != null) parts.push("zones " + pct(sc.zones)); else if (sc.inten != null) parts.push("intensiteit " + pct(sc.inten));
-      return "<div class='match ok'><div class='row'><b>✓ Gekoppeld aan Strava</b><span class='score'>" + pct(sc.total) + "</span>" + (m.manual ? "<span class='sub'>handmatig</span>" : "") + "</div>" +
+      return "<div class='match ok'><div class='row'><b>✓ Gekoppeld aan Strava</b>" + (m.manual ? "<span class='sub'>handmatig</span>" : "") + "</div>" +
         "<div class='row'><a href='https://www.strava.com/activities/" + esc(a.id) + "' target='_blank' rel='noopener'>" + esc(a.name) + "</a><span class='sub'>Bekijk op Strava" + (a.date !== iso(e.date) ? " · gereden op " + dshort(Date.parse(a.date + "T00:00:00Z")) : "") + "</span></div>" +
         "<div class='row sub'>" + esc(parts.join(" · ")) + "</div>" +
         "<div class='row'><button class='linkbtn' data-act='unlink' data-sid='" + e.id + "' data-aid='" + esc(a.id) + "' type='button'>Ontkoppel</button></div></div>";
     }
     if (m && m.best) {
-      return "<div class='match'><div class='row'><span>Beste kandidaat: <b>" + esc(m.best.name) + "</b></span><span class='score'>" + pct(m.sc.total) + "</span></div>" +
-        "<div class='row sub'>Onder de 70%, dus niet automatisch gekoppeld" + (m.sc.basis ? " (" + esc(m.sc.basis) + ")" : "") + ".</div>" +
+      return "<div class='match'><div class='row'><span>Rit op een andere dag: <b>" + esc(m.best.name) + "</b></span><span class='sub'>" + dshort(actTime(m.best)) + " · " + fmtH(m.best.moving / 60) + "</span><span class='score'>" + pct(m.sc.total) + "</span></div>" +
+        "<div class='row sub'>Niet op de dag van deze training, dus niet automatisch gekoppeld. Was dit deze training? Koppel hem dan zelf, of verplaats de training via Lukt niet?.</div>" +
         "<div class='row'><button class='linkbtn' data-act='link' data-sid='" + e.id + "' data-aid='" + esc(m.best.id) + "' type='button'>Toch koppelen</button></div></div>";
     }
-    if (e.date <= todayUTC()) return "<div class='match'><div class='row sub'>Geen rit gevonden op Strava voor deze training.</div></div>";
+    if (e.date <= todayUTC()) return "<div class='match'><div class='row sub'>Geen rit op Strava op " + dshort(e.date) + ".</div></div>";
     return "";
   }
 
@@ -318,11 +407,11 @@
     const ap = $("ftpApply");
     if (!me) { st.textContent = "Strava-status laden…"; ap.hidden = true; return; }
     if (!me.connected) {
-      st.textContent = me.offline ? "Geen verbinding met de server. Je plan werkt gewoon; koppelen kan zodra je online bent." : "Koppel Strava, dan worden je ritten automatisch aan trainingen gekoppeld vanaf 70% overeenkomst.";
+      st.textContent = me.offline ? "Geen verbinding met de server. Je plan werkt gewoon; koppelen kan zodra je online bent." : "Koppel Strava, dan worden ritten automatisch gekoppeld aan de training van dezelfde dag.";
       ap.hidden = true; return;
     }
     const linked = Object.keys(matches).filter(function (k) { return matches[k] && matches[k].act; }).length;
-    st.textContent = "Strava: " + (me.firstname || "gekoppeld") + (lastSync ? " · " + acts.length + " ritten, " + linked + " gekoppeld · " + String(lastSync.getHours()).padStart(2, "0") + ":" + String(lastSync.getMinutes()).padStart(2, "0") : " · ritten ophalen…");
+    st.textContent = "Strava: " + (me.firstname || "gekoppeld") + (lastSync ? " · " + acts.length + " ritten (12 mnd historie), " + linked + " gekoppeld · " + String(lastSync.getHours()).padStart(2, "0") + ":" + String(lastSync.getMinutes()).padStart(2, "0") : " · ritten ophalen…");
     if (me.ftp && me.ftp !== state.ftp) { ap.hidden = false; ap.textContent = "FTP uit Strava overnemen (" + me.ftp + " W)"; }
     else ap.hidden = true;
   }
@@ -342,6 +431,14 @@
     return body;
   }
 
+  // Ritten uit de vorige synchronisatie, zodat historie en koppelingen direct zichtbaar zijn.
+  function loadActsCache() {
+    try {
+      const raw = lsGet(ACTS_LS); if (!raw) return;
+      const c = JSON.parse(raw);
+      if (c && Array.isArray(c.acts)) { acts = c.acts; cachedSync = c.at ? new Date(c.at) : null; }
+    } catch (e) {}
+  }
   function loadHistCache() {
     try { const raw = lsGet("alpe-hists-v1"); if (raw) hists = JSON.parse(raw) || {}; } catch (e) { hists = {}; }
   }
@@ -351,13 +448,15 @@
     if (!me || !me.connected) return;
     $("syncBtn").disabled = true;
     try {
-      const after = Math.floor((START - 7 * DAY) / 1000);
+      const after = Math.floor((HIST_START - DAY) / 1000);
       const data = await api("/api/activities?after=" + after);
-      acts = (data.activities || []).filter(function (a) { const t = Date.parse(a.date + "T00:00:00Z"); return t >= START && t <= EVENT + 7 * DAY; });
+      acts = (data.activities || []).filter(function (a) { const t = actTime(a); return t >= HIST_START && t <= EVENT + 7 * DAY; });
+      acts.sort(function (x, y) { return String(y.start || y.date).localeCompare(String(x.start || x.date)); });
       lastSync = new Date();
+      lsSet(ACTS_LS, JSON.stringify({ at: lastSync.getTime(), acts: acts }));
       rematch(); renderAll();
-      // vermogensverdeling ophalen voor ritten met vermogen (max 30 per keer, cache op dit apparaat)
-      const todo = acts.filter(function (a) { return (a.power || a.avgW) && !hists[a.id]; }).slice(0, 30);
+      // vermogensverdeling ophalen voor ritten in de planperiode met vermogen (max 30 per keer, cache op dit apparaat)
+      const todo = acts.filter(function (a) { return actTime(a) >= START && (a.power || a.avgW) && !hists[a.id]; }).slice(0, 30);
       for (let i = 0; i < todo.length; i++) {
         try { hists[todo[i].id] = await api("/api/streams?id=" + encodeURIComponent(todo[i].id)); }
         catch (e) { if (e.status === 429) { toast("Strava-limiet bereikt; de rest volgt later."); break; } }
@@ -417,7 +516,9 @@
   });
   $("logoutBtn").addEventListener("click", async function () {
     try { await api("/api/auth/logout", { method: "POST" }); } catch (e) {}
-    me = { connected: false }; acts = []; matches = {}; lastSync = null; renderAll();
+    me = { connected: false }; acts = []; matches = {}; lastSync = null; cachedSync = null;
+    try { localStorage.removeItem(ACTS_LS); } catch (e) {}
+    renderAll();
     toast("Strava ontkoppeld op dit apparaat.");
   });
 
@@ -438,6 +539,8 @@
       token: "Strava weigerde de koppeling. Controleer Client ID en Client Secret in Netlify."
     }[reason] || "Koppelen is niet gelukt. Probeer het opnieuw.");
     if (me.connected) {
+      loadActsCache();
+      if (acts.length) { lastSync = cachedSync; rematch(); renderAll(); }
       await loadCloudState();
       await syncStrava();
     }
