@@ -7,6 +7,8 @@ Persoonlijke trainingsapp naar 6× Alpe d'Huez op 3 juni 2027. Draait op Netlify
 - 30 weken plan met wattages op basis van je FTP (bovenin aan te passen).
 - **Lukt niet?** per training: minder tijd, andere dag in dezelfde week, of overslaan. Bij minder tijd past de app de training aan: werkblokken gaan voor, zone 2 wordt korter. Is de tijd te kort voor de opbouw, dan wordt het een rit op hoge zone 2.
 - **Strava-koppeling**: een rit wordt automatisch gekoppeld aan de training van dezelfde datum (de geplande dag, of de dag waarnaar je de training verplaatst hebt).
+- **Naar Zwift**: elke training is te downloaden als Zwift-trainingsbestand (.zwo), zoals hij op dat moment staat (ook ingekort). Zet het in `Documenten/Zwift/Workouts/<je Zwift-id>/` en hij staat in Zwift onder *Custom Workouts*. Zwift heeft geen openbare API, dus rechtstreeks in je profiel zetten kan niet.
+- **intervals.icu → Zwift**: met de knop **Week naar intervals.icu** zet de app de trainingen van die week (vanaf vandaag) in je intervals.icu-kalender. intervals.icu zet ze via de officiële Zwift-koppeling in Zwift onder *Workouts → Custom → Intervals.icu*. Pas je een verstuurde training aan of sla je hem over, dan werkt de app intervals.icu meteen bij. Polarized.cc heeft geen openbare API, daarom loopt dit via intervals.icu.
 - **Historie**: de app haalt de ritten van de 12 maanden vóór het plan op en toont per week je gereden uren, naast de weken van het plan.
 - Voortgang wordt per Strava-account opgeslagen, dus telefoon en laptop tonen hetzelfde.
 
@@ -63,11 +65,18 @@ Netlify → je site → *Site configuration* → *Environment variables*:
 |---|---|
 | `STRAVA_CLIENT_ID` | Client ID uit stap 1 |
 | `STRAVA_CLIENT_SECRET` | Client Secret uit stap 1 |
+| `INTERVALS_API_KEY` | API-sleutel uit intervals.icu → *Settings* → *Developer Settings* (optioneel, voor de koppeling met intervals.icu en Zwift) |
 | `SESSION_SECRET` | Een lange willekeurige tekst, minimaal 32 tekens. Bijvoorbeeld uit `openssl rand -hex 32` |
 
 Deploy daarna opnieuw (*Deploys* → *Trigger deploy*), zodat de functies de variabelen zien.
 
-### 4. Koppelen en installeren op je telefoon
+### 4. intervals.icu en Zwift (optioneel)
+
+1. Maak een gratis account op <https://intervals.icu> en zet in *Settings* je FTP gelijk aan die in Zwift.
+2. Kies in *Settings* bij **Zwift** de knop *Connect* en log in met je Zwift-account.
+3. Zet de API-sleutel (*Settings* → *Developer Settings*) als `INTERVALS_API_KEY` in Netlify en deploy opnieuw.
+
+### 5. Koppelen en installeren op je telefoon
 
 1. Open de site en klik op **Koppel Strava**. Geef toegang tot je activiteiten.
 2. Op iPhone: deel-knop → *Zet op beginscherm*. Op Android: menu → *App installeren*.
@@ -78,7 +87,7 @@ Deploy daarna opnieuw (*Deploys* → *Trigger deploy*), zodat de functies de var
 public/                  de app zelf
   index.html, app.css    interface
   plan.js                het trainingsplan (weken, sessies, coachteksten)
-  logic.js               inkorten van trainingen en Strava-matching
+  logic.js               inkorten van trainingen, Strava-matching en Zwift-export
   app.js                 interface, opslag, Strava-synchronisatie
   sw.js, manifest        installeerbaar en offline bruikbaar
 netlify/functions/       serverfuncties (Strava-login, ritten, opslag)
