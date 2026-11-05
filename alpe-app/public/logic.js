@@ -3,7 +3,6 @@
   "use strict";
   const P = g.AlpePlan;
   const DAY = P.DAY;
-  const MATCH_THRESHOLD = 0.7;
 
   // ---------- aanpassen ----------
   const isWarm = (s) => /^(Opwarmen|Inrijden)$/.test(s[3]);
@@ -142,12 +141,18 @@
   }
 
   // Koppelt ritten aan sessies.
+  // Een rit wordt alleen automatisch gekoppeld als hij op dezelfde datum is gereden als de training
+  // (de geplande dag, of de dag waarnaar je de training hebt verplaatst). De score laat zien hoe goed
+  // de rit overeenkomt, maar bepaalt niet óf er gekoppeld wordt. Rijd je meerdere ritten op die dag,
+  // dan gaat de best passende voor.
+  // Ritten op een vrije dag in dezelfde week worden als kandidaat getoond (handmatig koppelen).
   // sessions: [{id, date (ms UTC), w}] met effectieve datum en training; overgeslagen sessies niet meegeven.
   // acts: [{id, date 'YYYY-MM-DD', moving, avgW, npW, ...}]
   // opts: {hists: {actId: hist}, ftp, links: {sid: actId}, unlinks: {sid: actId}}
   function match(sessions, acts, opts) {
     const iso = (t) => new Date(t).toISOString().slice(0, 10);
     const weekOf = (t) => Math.floor((t - P.START) / (7 * DAY));
+    const hists = opts.hists || {};
     const byId = {}; acts.forEach((a) => { byId[a.id] = a; });
     const sessionDates = {}; sessions.forEach((s) => { sessionDates[iso(s.date)] = true; });
     const result = {}; // sid -> {act, sc, manual} | {best, sc}
@@ -157,42 +162,41 @@
     sessions.forEach((s) => {
       const aid = opts.links && opts.links[s.id];
       if (aid && byId[aid]) {
-        result[s.id] = { act: byId[aid], sc: score(s.w, byId[aid], opts.hists[aid], opts.ftp), manual: true };
+        result[s.id] = { act: byId[aid], sc: score(s.w, byId[aid], hists[aid], opts.ftp), manual: true };
         usedActs[aid] = true;
       }
     });
 
-    const pairs = [];
+    const same = [], other = [];
     sessions.forEach((s) => {
       if (result[s.id]) return;
       const d = iso(s.date), wk = weekOf(s.date);
       acts.forEach((a) => {
         if (usedActs[a.id]) return;
         if (opts.unlinks && opts.unlinks[s.id] === a.id) return;
-        const t = Date.parse(a.date + "T00:00:00Z");
-        let factor;
-        if (a.date === d) factor = 1;
-        else if (weekOf(t) === wk && !sessionDates[a.date]) factor = 0.9; // gereden op een vrije dag in dezelfde week
-        else return;
-        const sc = score(s.w, a, opts.hists[a.id], opts.ftp);
-        sc.total *= factor;
-        sc.otherDay = factor < 1;
-        pairs.push({ s, a, sc });
+        if (a.date === d) {
+          same.push({ s, a, sc: score(s.w, a, hists[a.id], opts.ftp) });
+        } else if (weekOf(Date.parse(a.date + "T00:00:00Z")) === wk && !sessionDates[a.date]) {
+          const sc = score(s.w, a, hists[a.id], opts.ftp);
+          sc.otherDay = true;
+          other.push({ s, a, sc });
+        }
       });
     });
-    pairs.sort((x, y) => y.sc.total - x.sc.total);
-    pairs.forEach((p) => {
-      if (result[p.s.id] && result[p.s.id].act) return;
-      if (usedActs[p.a.id]) return;
-      if (p.sc.total >= MATCH_THRESHOLD) {
-        result[p.s.id] = { act: p.a, sc: p.sc, manual: false };
-        usedActs[p.a.id] = true;
-      } else if (!result[p.s.id]) {
-        result[p.s.id] = { best: p.a, sc: p.sc };
-      }
+    const byScore = (x, y) => y.sc.total - x.sc.total;
+    // zelfde datum: altijd koppelen
+    same.sort(byScore).forEach((p) => {
+      if (result[p.s.id] || usedActs[p.a.id]) return;
+      result[p.s.id] = { act: p.a, sc: p.sc, manual: false };
+      usedActs[p.a.id] = true;
+    });
+    // andere dag: alleen als suggestie
+    other.sort(byScore).forEach((p) => {
+      if (result[p.s.id] || usedActs[p.a.id]) return;
+      result[p.s.id] = { best: p.a, sc: p.sc };
     });
     return result;
   }
 
-  g.AlpeLogic = { adapt, score, match, plannedZones, actualZones, overlap, zoneOf, MATCH_THRESHOLD };
+  g.AlpeLogic = { adapt, score, match, plannedZones, actualZones, overlap, zoneOf };
 })(typeof window !== "undefined" ? window : globalThis);

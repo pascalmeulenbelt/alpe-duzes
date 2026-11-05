@@ -1,5 +1,5 @@
 // Offline-ondersteuning: de app zelf werkt zonder netwerk, Strava en opslag niet.
-const VERSION = "alpe-v4";
+const VERSION = "alpe-v5";
 const SHELL = ["/", "/index.html", "/app.css", "/plan.js", "/logic.js", "/app.js", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (e) => {

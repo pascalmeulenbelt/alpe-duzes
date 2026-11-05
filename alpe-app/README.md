@@ -6,12 +6,17 @@ Persoonlijke trainingsapp naar 6× Alpe d'Huez op 3 juni 2027. Draait op Netlify
 
 - 30 weken plan met wattages op basis van je FTP (bovenin aan te passen).
 - **Lukt niet?** per training: minder tijd, andere dag in dezelfde week, of overslaan. Bij minder tijd past de app de training aan: werkblokken gaan voor, zone 2 wordt korter. Is de tijd te kort voor de opbouw, dan wordt het een rit op hoge zone 2.
-- **Strava-koppeling**: ritten worden automatisch aan een training gekoppeld als ze minimaal 70% overeenkomen.
+- **Strava-koppeling**: een rit wordt automatisch gekoppeld aan de training van dezelfde datum (de geplande dag, of de dag waarnaar je de training verplaatst hebt).
+- **Historie**: de app haalt de ritten van de 12 maanden vóór het plan op en toont per week je gereden uren, naast de weken van het plan.
 - Voortgang wordt per Strava-account opgeslagen, dus telefoon en laptop tonen hetzelfde.
 
-### Hoe de 70% wordt berekend
+### Koppelen en overeenkomst
 
-Per training en rit uit dezelfde week:
+- Alleen ritten op **dezelfde datum** als een training worden automatisch gekoppeld. Meerdere ritten op die dag? Dan gaat de best passende voor.
+- Een rit op een vrije dag in dezelfde week verschijnt als suggestie met de knop **Toch koppelen**, en onder *Losse ritten deze week*. Hij telt wel mee in je gereden uren.
+- Elke rit wordt maar aan één training gekoppeld. Een koppeling kun je ongedaan maken met **Ontkoppel**.
+
+Bij elke koppeling staat hoe goed de rit overeenkomt met de training:
 
 | Onderdeel | Weging | Wat het meet |
 |---|---|---|
@@ -20,9 +25,6 @@ Per training en rit uit dezelfde week:
 
 - Geen vermogensdata in de rit? Dan telt het gemiddelde vermogen tegenover de geplande gemiddelde intensiteit.
 - Geen vermogen bekend? Dan alleen de duur, met maximaal 85% score.
-- Rit op een andere dag in dezelfde week (waarop geen training gepland stond)? Score × 0,9.
-- Elke rit wordt maar aan één training gekoppeld; de beste combinaties gaan voor.
-- Onder 70% zie je de beste kandidaat met de knop **Toch koppelen**. Een automatische koppeling kun je ongedaan maken met **Ontkoppel**.
 
 ## Installeren
 
