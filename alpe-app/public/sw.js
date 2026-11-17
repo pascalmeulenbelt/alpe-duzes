@@ -1,6 +1,6 @@
 // Offline-ondersteuning: de app zelf werkt zonder netwerk, Strava en opslag niet.
-const VERSION = "alpe-v7";
-const SHELL = ["/", "/index.html", "/app.css", "/plan.js", "/logic.js", "/app.js", "/manifest.webmanifest", "/icon-192.png"];
+const VERSION = "alpe-v8";
+const SHELL = ["/", "/index.html", "/app.css", "/plan.js", "/logic.js", "/season.js", "/app.js", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

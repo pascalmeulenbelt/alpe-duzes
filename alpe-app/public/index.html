@@ -29,6 +29,7 @@
     <nav class="tabs" aria-label="Weergave">
       <a href="#week" data-view="week">Week</a>
       <a href="#schema" data-view="schema">Schema</a>
+      <a href="#indeling" data-view="indeling">Indeling</a>
       <a href="#alpe" data-view="alpe">Rekenmodel</a>
     </nav>
   </div>
@@ -111,6 +112,38 @@
     <div id="schemaList"></div>
   </section>
 
+  <section id="v-indeling" hidden>
+    <div class="setup">
+      <div class="panel">
+        <h2>Buiten of binnen</h2>
+        <p>Tot eind februari wordt lang buiten rijden steeds lastiger: kort daglicht, kou, regen en gladheid. De app kiest per buitentraining op basis van de weersverwachting en het licht in Nijverdal. Moet het binnen, dan krijg je een kortere, iets steviger Zwift-versie. Per training kun je het altijd zelf omzetten.</p>
+        <div class="fields">
+          <label class="f" for="inMax">Langste binnenrit<select id="inMax"></select></label>
+        </div>
+        <p class="hint">Coaches houden binnenritten meestal onder de 90 minuten: langer is mentaal zwaar en leidt tot opbranden tegen februari, juist als de belangrijke weken beginnen. Binnen trap je continu, dus een uur Zwift is ongeveer 1:15 tot 1:30 buiten. Wat de zondag binnen mist, vang je op met de extra dag en met buitenritten op droge dagen.</p>
+        <h3>Daglicht op zondag</h3>
+        <div class="lightchart" id="lightChart"></div>
+        <div class="legend"><span><i class="lg-bui"></i>Lange rit, buiten</span><span><i class="lg-bin"></i>Lange rit, gepland binnen</span><span><i class="lg-light"></i>Goed rijlicht (uren)</span></div>
+        <h3>Komende twee weken</h3>
+        <div id="wxNext"></div>
+      </div>
+      <div class="panel">
+        <h2>Extra trainingsdag</h2>
+        <p>Voeg vanaf een gekozen week een vierde trainingsdag toe. Hij is altijd rustig, valt weg in herstelweken en groeit langzaam mee.</p>
+        <label class="check" for="exOn"><input type="checkbox" id="exOn"> Extra dag aanzetten</label>
+        <div class="fields">
+          <label class="f" for="exFrom">Vanaf<select id="exFrom"></select></label>
+          <label class="f" for="exDay">Dag<select id="exDay"></select></label>
+          <label class="f" for="exMax">Hoogstens<select id="exMax"></select></label>
+        </div>
+        <h3>Advies van je coach</h3>
+        <ul class="advice" id="exAdvice"></ul>
+        <h3>Uren per week</h3>
+        <div class="tablewrap" id="exImpact"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="v-alpe" hidden>
     <div class="calc">
       <div class="panel">
@@ -142,6 +175,7 @@
 
 <script src="/plan.js"></script>
 <script src="/logic.js"></script>
+<script src="/season.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
