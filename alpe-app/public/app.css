@@ -214,3 +214,47 @@ table.sched { border-collapse: collapse; width: 100%; min-width: 640px; font-siz
 .icubar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; max-width: 72ch }
 .icubar span { flex: 1 1 260px; font-size: 14px; color: var(--muted) }
 .icubar span b { display: block; color: var(--fg); font-family: var(--font-display); text-transform: uppercase; letter-spacing: .06em; font-size: 14px }
+
+/* indeling: winter, daglicht, extra dag */
+.setup { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start }
+@media (max-width: 860px) { .setup { grid-template-columns: 1fr } }
+.setup .panel { display: grid; gap: 12px; min-width: 0 }
+.setup .panel h2 { margin: 0 }
+.setup .panel h3 { font-size: 18px; font-weight: 600; margin-top: 6px }
+.setup .panel p { margin: 0 }
+.setup .fields { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end }
+.setup label.f { display: grid; gap: 3px; font-size: 13px; color: var(--muted) }
+.setup select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100% }
+.setup select:disabled { opacity: .5 }
+.setup .hint { font-size: 12.5px; color: var(--muted) }
+.advice { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px }
+.advice li { border: 1px solid var(--line); border-left: 4px solid var(--k-duur); border-radius: 6px; padding: 8px 10px; font-size: 14px; background: var(--surface) }
+.advice li.let { border-left-color: var(--sign) }
+.advice li.info { border-left-color: var(--accent) }
+.advice li b { display: block; font-family: var(--font-display); font-size: 16px; font-weight: 600 }
+.setup td.neg { color: var(--k-drempel) }
+.setup td.pos { color: var(--ok) }
+.lightchart { overflow-x: auto }
+.lightchart svg { display: block; width: 100%; min-width: 460px; height: auto }
+.lightchart text { fill: var(--muted); font-family: var(--font-data); font-size: 10px }
+.lightchart .grid { stroke: var(--line); stroke-width: 1 }
+.lightchart rect.bui { fill: var(--k-duur) }
+.lightchart rect.bin { fill: var(--k-herstel) }
+.lightchart .light { fill: none; stroke: var(--sign); stroke-width: 2.5 }
+.legend i.lg-bui { background: var(--k-duur) } .legend i.lg-bin { background: var(--k-herstel) } .legend i.lg-light { background: var(--sign) }
+.wxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px }
+.wxday { display: grid; gap: 1px; font-size: 12px; padding: 6px 7px; border-radius: 6px; border: 1px solid var(--line); border-top: 4px solid var(--ok); background: var(--surface) }
+.wxday.maybe { border-top-color: var(--sign) } .wxday.in { border-top-color: var(--k-herstel) }
+.wxday b { font-weight: 600 }
+.wx { padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13.5px; display: grid; gap: 4px }
+.wx .row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px }
+.wx .sub { color: var(--muted); font-size: 12.5px }
+.pill { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 9px; background: var(--chip-bg) }
+.pill.out { background: var(--ok); color: var(--surface) }
+.pill.maybe { background: var(--sign); color: var(--sign-ink) }
+.pill.in { background: var(--k-herstel); color: var(--surface) }
+.chip.out { background: var(--ok); color: var(--surface) }
+.chip.extra { background: var(--accent); color: var(--accent-ink) }
+nav.tabs { overflow-x: auto; scrollbar-width: none }
+nav.tabs::-webkit-scrollbar { display: none }
+@media (max-width: 480px) { nav.tabs a { font-size: 15px; padding: 4px 7px; letter-spacing: .02em; white-space: nowrap } }

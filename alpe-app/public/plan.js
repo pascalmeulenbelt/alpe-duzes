@@ -6,7 +6,7 @@
   const START = Date.UTC(2026, 10, 2); // maandag 2 nov 2026 = week 0
   const EVENT = Date.UTC(2027, 5, 3);
   const MONTHS = ["januari","februari","maart","april","mei","juni","juli","augustus","september","oktober","november","december"];
-  const DAYN = { wed: ["Wo", 2], fri: ["Vr", 4], sun: ["Zo", 6], thu: ["Do", 3] };
+  const DAYN = { mon: ["Ma", 0], tue: ["Di", 1], wed: ["Wo", 2], thu: ["Do", 3], fri: ["Vr", 4], sat: ["Za", 5], sun: ["Zo", 6] };
   const KIND = {
     herstel: ["Herstel", "--k-herstel"], duur: ["Duur", "--k-duur"], tempo: ["Tempo", "--k-tempo"],
     sst: ["Sweet spot", "--k-sst"], drempel: ["Drempel", "--k-drempel"], vo2: ["VO2max", "--k-vo2"],
@@ -174,5 +174,5 @@
 
 
   g.AlpePlan = { DAY, START, EVENT, MONTHS, DAYN, KIND, TITLES, stepKind, PHASES, REC, FOCUS, PLAN, WEEKS, ZWIFT_END,
-    minutes, fmtH, titleOf, hz2, z2, lowShare, intervals };
+    minutes, fmtH, titleOf, hz2, z2, lowShare, intervals, drills, easy };
 })(typeof window !== "undefined" ? window : globalThis);

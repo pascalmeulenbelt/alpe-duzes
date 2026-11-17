@@ -1,7 +1,7 @@
 /* Alpe d'HuZes trainingsplan: interface, opslag en Strava-koppeling. */
 (function () {
   "use strict";
-  const P = window.AlpePlan, L = window.AlpeLogic;
+  const P = window.AlpePlan, L = window.AlpeLogic, S = window.AlpeSeason;
   const { DAY, START, EVENT, MONTHS, DAYN, KIND, PHASES, FOCUS, WEEKS, ZWIFT_END } = P;
   const minutes = P.minutes, fmtH = P.fmtH;
   const WEEKDAYS = ["Zo", "Ma", "Di", "Wo", "Do", "Vr", "Za"];
@@ -12,8 +12,12 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function normalize(s) {
-    return Object.assign({ v: 1, ftp: 237, kg: 80, done: {}, ov: {}, links: {}, unlinks: {}, icu: {}, updatedAt: 0 }, s || {});
+    const o = Object.assign({ v: 1, ftp: 237, kg: 80, done: {}, ov: {}, links: {}, unlinks: {}, icu: {}, updatedAt: 0 }, s || {});
+    o.season = Object.assign({ indoorMax: 90 }, o.season || {});
+    o.extra = Object.assign({ on: false, fromWeek: 0, day: "sat", max: 90 }, o.extra || {});
+    return o;
   }
+  state = normalize(state);
   try { const raw = lsGet(LS); if (raw) state = normalize(JSON.parse(raw)); } catch (e) {}
 
   let me = null;           // {connected, firstname, ftp, weight}
@@ -29,6 +33,8 @@
   function actTime(a) { return Date.parse(a.date + "T00:00:00Z"); }
   function weekIdx(t) { return Math.floor((t - START) / (7 * DAY)); }
   let saveTimer = null;
+  let wx = {};             // weersverwachting per datum (Open-Meteo)
+  let wxAt = 0;
 
   function save() {
     state.updatedAt = Date.now();
@@ -56,13 +62,35 @@
   function fmtDur(m) { return m >= 60 ? fmtH(m) : m + "′"; }
 
   // Sessie met aanpassingen toegepast
+  // Kan deze training buiten? Wo en vr tot en met maart zijn Zwift-dagen; de Alpe-dag zelf telt niet mee.
+  function outdoorCandidate(s, date) { return s.w.kind !== "event" && !((s.day === "wed" || s.day === "fri") && date < ZWIFT_END); }
+  // Buiten of binnen: jouw keuze, anders de weersverwachting, anders het seizoen.
+  function placeOf(s, date, w) {
+    if (!outdoorCandidate(s, date)) return { where: "zwift" };
+    const o = state.ov[s.id] || {}, d = iso(date);
+    const light = S.daylight(date), f = wx[d] || null, v = S.weatherVerdict(f);
+    const res = { light: light, f: f, v: v, auto: !o.where };
+    if (o.where) { res.where = o.where; res.why = "jouw keuze"; return res; }
+    if (v) { res.where = v.level === "slecht" ? "binnen" : "buiten"; res.why = v.level === "slecht" ? v.why : "weersverwachting"; return res; }
+    if (date < todayUTC()) { res.where = "buiten"; res.why = "voorbij"; return res; }
+    if (S.isWinter(date) && minutes(w) > state.season.indoorMax) { res.where = "binnen"; res.why = "winter: gepland als binnenrit, weer volgt 16 dagen vooraf"; return res; }
+    res.where = "buiten"; res.why = "seizoen"; return res;
+  }
   function eff(s) {
     const o = state.ov[s.id] || {};
-    const w = o.min ? L.adapt(s.w, o.min, s.day) : s.w;
+    let w = o.min ? L.adapt(s.w, o.min, s.day) : s.w;
     const date = o.date ? Date.parse(o.date + "T00:00:00Z") : s.date;
-    return { id: s.id, day: s.day, base: s, w: w, date: date, title: w === s.w ? s.title : w.title, skip: !!o.skip, ov: o, moved: !!o.date && o.date !== iso(s.date) };
+    const place = placeOf(s, date, w);
+    if (place.where === "binnen") w = S.indoorize(w, state.season.indoorMax, s.day);
+    else if (place.where === "buiten" && place.light && date >= todayUTC()) w = S.fitDaylight(w, place.light.usable, s.day);
+    return { id: s.id, day: s.day, base: s, w: w, date: date, title: w === s.w ? s.title : w.title, skip: !!o.skip, ov: o, place: place, extra: !!s.extra, moved: !!o.date && o.date !== iso(s.date) };
   }
-  function weekEff(wk) { return wk.sessions.map(eff).sort(function (a, b) { return a.date - b.date; }); }
+  // Alle trainingen van een week, inclusief de extra dag als die aan staat.
+  function weekSessions(wk) {
+    const x = S.extraSession(wk, state.extra);
+    return x ? wk.sessions.concat([x]) : wk.sessions;
+  }
+  function weekEff(wk) { return weekSessions(wk).map(eff).sort(function (a, b) { return a.date - b.date; }); }
   function isDone(e) { return !e.skip && (!!state.done[e.id] || !!(matches[e.id] && matches[e.id].act)); }
   function weekMins(list) { return list.reduce(function (a, e) { return a + (e.skip ? 0 : minutes(e.w)); }, 0); }
 
@@ -242,6 +270,27 @@
     return "";
   }
 
+  // Daglicht, weer en de keuze buiten of binnen
+  function placeBlock(e) {
+    const pl = e.place;
+    if (!pl || pl.where === "zwift" || e.skip || e.date < todayUTC() - DAY) return "";
+    const li = pl.light, mins = minutes(e.w);
+    let head, cls;
+    if (pl.where === "binnen") { head = "Binnen op Zwift"; cls = "in"; }
+    else { head = "Buiten"; cls = pl.v && pl.v.level === "matig" ? "maybe" : "out"; }
+    const why = pl.auto ? (pl.f ? (pl.where === "binnen" ? "weer: " + pl.v.why : "weer is goed genoeg") : pl.why) : "jouw keuze";
+    let rows = "<div class='row'><span class='pill " + cls + "'>" + head + "</span><span class='sub'>" + esc(why) + (pl.auto ? " · automatisch" : "") + "</span></div>";
+    rows += "<div class='row sub'>Daglicht " + li.riseTxt + " tot " + li.setTxt + " · goed rijlicht " + li.fromTxt + " tot " + li.toTxt + " (" + fmtH(li.usable) + ")" +
+      (pl.where === "buiten" && mins <= li.usable ? " · vertrek uiterlijk " + li.latestStart(mins) : "") + "</div>";
+    if (pl.f) rows += "<div class='row sub'>Verwachting: " + esc(S.weatherLine(pl.f)) + "</div>";
+    else if (e.date >= todayUTC()) rows += "<div class='row sub'>De weersverwachting verschijnt 16 dagen vooraf.</div>";
+    if (pl.where === "buiten" && pl.v && pl.v.level === "matig") rows += "<div class='row sub'>Tip: " + esc(pl.v.why) + ".</div>";
+    const alt = pl.where === "binnen" ? "buiten" : "binnen";
+    rows += "<div class='row'><button class='linkbtn' type='button' data-act='where' data-where='" + alt + "' data-sid='" + e.id + "'>Toch " + alt + "</button>" +
+      (pl.auto ? "" : "<button class='linkbtn' type='button' data-act='where' data-where='' data-sid='" + e.id + "'>Automatisch laten kiezen</button>") + "</div>";
+    return "<div class='wx " + cls + "'>" + rows + "</div>";
+  }
+
   function ovPanel(e, wk) {
     const total = minutes(e.base.w);
     let opts = "<option value=''>Zoals gepland (" + fmtH(total) + ")</option>";
@@ -252,10 +301,13 @@
       const sel = e.ov.date ? e.ov.date === v : planned;
       days += "<option value='" + (planned ? "" : v) + "'" + (sel ? " selected" : "") + ">" + dshort(t) + (planned ? " (gepland)" : "") + "</option>";
     }
-    const has = e.ov.min || e.ov.date || e.ov.skip;
+    const has = e.ov.min || e.ov.date || e.ov.skip || e.ov.where;
+    const canOut = e.place && e.place.where !== "zwift";
+    const whereSel = canOut ? "<label class='f' for='ovw-" + e.id + "'>Waar<select id='ovw-" + e.id + "'>" +
+      [["", "Automatisch (weer en licht)"], ["buiten", "Buiten"], ["binnen", "Binnen op Zwift"]].map(function (o) { return "<option value='" + o[0] + "'" + ((e.ov.where || "") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" : "";
     return "<div class='ovpanel'><div class='fields'>" +
       "<label class='f' for='ovm-" + e.id + "'>Beschikbare tijd<select id='ovm-" + e.id + "'>" + opts + "</select></label>" +
-      "<label class='f' for='ovd-" + e.id + "'>Dag<select id='ovd-" + e.id + "'>" + days + "</select></label>" +
+      "<label class='f' for='ovd-" + e.id + "'>Dag<select id='ovd-" + e.id + "'>" + days + "</select></label>" + whereSel +
       "<label class='check' for='ovs-" + e.id + "'><input type='checkbox' id='ovs-" + e.id + "'" + (e.ov.skip ? " checked" : "") + "> Overslaan</label></div>" +
       "<div class='hint'>Bij minder tijd past de coach de training aan: blokken gaan voor, zone 2 wordt korter. Overgeslagen is overgeslagen, niet dubbel inhalen.</div>" +
       "<div class='actions'><button class='btn primary' type='button' data-act='ovsave' data-sid='" + e.id + "'>Opslaan</button>" +
@@ -272,15 +324,19 @@
     const dayLabel = WEEKDAYS[d.getUTCDay()];
     let chips = "<span class='chip kind'>" + k[0] + "</span><span class='chip num'>" + fmtH(minutes(w)) + "</span>";
     if (e.skip) chips += "<span class='chip warn'>Overgeslagen</span>";
-    if (w.adapted) chips += "<span class='chip warn'>Ingekort, was " + fmtH(w.adapted.from) + "</span>";
+    if (e.extra) chips += "<span class='chip extra'>Extra dag</span>";
+    if (w.indoor) chips += "<span class='chip warn'>Binnenversie, buiten " + fmtH(w.indoor.from) + "</span>";
+    else if (w.adapted) chips += "<span class='chip warn'>Ingekort, was " + fmtH(w.adapted.from) + "</span>";
     if (e.moved) chips += "<span class='chip warn'>Verplaatst van " + DAYN[e.day][0].toLowerCase() + "</span>";
     if (w.rpm) chips += "<span class='chip'>" + esc(w.rpm) + "</span>";
-    if ((e.day === "wed" || e.day === "fri") && e.date < ZWIFT_END) chips += "<span class='chip'>Zwift · ERG</span>";
+    if (e.place && (e.place.where === "zwift" || e.place.where === "binnen")) chips += "<span class='chip'>Zwift · ERG</span>";
+    else if (e.place && e.place.where === "buiten") chips += "<span class='chip out'>Buiten</span>";
     el.innerHTML =
       "<div class='s-head'><div class='s-day'>" + dayLabel + "<b class='num'>" + d.getUTCDate() + "</b>" + MONTHS[d.getUTCMonth()].slice(0, 3) + "</div>" +
       "<div class='s-title'><h3>" + esc(e.title) + "</h3><div class='chips'>" + chips + "</div></div></div>" +
       "<table class='steps'><tbody>" + stepRows(w) + "</tbody></table>" +
       "<div class='note'>" + esc(w.note) + "</div>" +
+      placeBlock(e) +
       matchBlock(e) +
       (openPanel === e.id ? ovPanel(e, wk) : "") +
       "<div class='s-foot'>" + (e.skip ? "" : (matches[e.id] && matches[e.id].act && !state.done[e.id]) ? "<span class='check' style='color:var(--ok)'>✓ Gedaan via Strava</span>" : "<label class='check' for='c-" + e.id + "'><input type='checkbox' id='c-" + e.id + "'" + (state.done[e.id] ? " checked" : "") + "> Gedaan</label>") +
@@ -337,7 +393,7 @@
   // Na aanpassen of overslaan: stond de training al in intervals.icu, dan meteen bijwerken.
   function icuResync(sid) {
     if (!icu.configured || !state.icu[sid]) return;
-    const wk = WEEKS.find(function (w) { return w.sessions.some(function (s) { return s.id === sid; }); });
+    const m = /^w(\d+)/.exec(sid), wk = m ? WEEKS[+m[1]] : null;
     if (wk) icuSend(wk, true);
   }
   function renderIcuBar() {
@@ -380,7 +436,9 @@
     if (act === "ovreset") { delete state.ov[sid]; openPanel = null; save(); rematch(); renderAll(); icuResync(sid); toast("Training staat weer zoals gepland."); return; }
     if (act === "ovsave") {
       const m = $("ovm-" + sid).value, d = $("ovd-" + sid).value, s = $("ovs-" + sid).checked;
+      const wsel = $("ovw-" + sid), wh = wsel ? wsel.value : "";
       const o = {};
+      if (wh) o.where = wh;
       if (m) o.min = +m;
       if (d) o.date = d;
       if (s) o.skip = true;
@@ -388,6 +446,14 @@
       if (s) delete state.done[sid];
       openPanel = null; save(); rematch(); renderAll(); icuResync(sid);
       toast(s ? "Overgeslagen. Volgende training gewoon volgens plan." : (m ? "Aangepast naar " + fmtH(+m) + "." : "Opgeslagen."));
+      return;
+    }
+    if (act === "where") {
+      const o = Object.assign({}, state.ov[sid] || {});
+      if (b.dataset.where) o.where = b.dataset.where; else delete o.where;
+      if (Object.keys(o).length) state.ov[sid] = o; else delete state.ov[sid];
+      save(); rematch(); renderAll(); icuResync(sid);
+      toast(b.dataset.where === "binnen" ? "Binnenversie op Zwift." : b.dataset.where === "buiten" ? "Buiten, ingekort tot het daglicht als dat nodig is." : "De app kiest weer zelf op basis van weer en licht.");
       return;
     }
     if (act === "link") { state.links[sid] = b.dataset.aid; delete state.unlinks[sid]; save(); rematch(); renderAll(); toast("Gekoppeld."); return; }
@@ -402,26 +468,140 @@
         const wk = WEEKS[n];
         const list = weekEff(wk);
         const cell = function (d) {
-          const e = list.find(function (x) { return x.day === d; });
+          const e = list.find(function (x) { return x.day === d && !x.extra; });
           if (!e) return "<td></td>";
           const tag = e.skip ? " <span class='sub'>(overgeslagen)</span>" : (isDone(e) ? " <span class='ok'>✓</span>" : "");
           return "<td><div class='cell' style='--kc:" + cssVar(KIND[e.w.kind][1]) + "'><span class='dot'></span><span>" + esc(e.title) + tag + "</span></div></td>";
         };
-        const mid = list.some(function (x) { return x.day === "thu"; }) ? cell("thu") : cell("fri");
+        const mid = list.some(function (x) { return x.day === "thu" && !x.extra; }) ? cell("thu") : cell("fri");
+        const xe = list.find(function (x) { return x.extra; });
+        const xcell = state.extra.on ? (xe ? "<td><div class='cell' style='--kc:" + cssVar(KIND[xe.w.kind][1]) + "'><span class='dot'></span><span>" + esc(xe.title.replace(/ · extra$/, "")) + (xe.skip ? " <span class='sub'>(overgeslagen)</span>" : (isDone(xe) ? " <span class='ok'>✓</span>" : "")) + "</span></div></td>" : "<td class='sub'>–</td>") : "";
         const active = list.filter(function (e) { return !e.skip; });
         const low = n === 30 ? null : P.lowShare(active.map(function (e) { return e.w; }));
-        return "<tr data-w='" + n + "' class='" + (n === cur ? "cur" : "") + "'><td class='wk'>" + n + (wk.rec ? " · H" : "") + "<br><small style='color:var(--muted)'>" + dstr(wk.mon) + "</small></td>" + cell("wed") + mid + cell("sun") +
+        return "<tr data-w='" + n + "' class='" + (n === cur ? "cur" : "") + "'><td class='wk'>" + n + (wk.rec ? " · H" : "") + "<br><small style='color:var(--muted)'>" + dstr(wk.mon) + "</small></td>" + cell("wed") + mid + cell("sun") + xcell +
           "<td class='num'>" + fmtH(weekMins(active)) + "</td><td class='num'>" + (low == null ? "–" : low + "%") + "</td></tr>";
       }).join("");
       const hrs = p.weeks.reduce(function (a, n) { return a + weekMins(weekEff(WEEKS[n]).filter(function (e) { return !e.skip; })); }, 0);
       return "<div class='phase'><h2>" + p.name + "<small>Week " + p.weeks[0] + (p.weeks.length > 1 ? " tot " + p.weeks[p.weeks.length - 1] : "") + " · " + fmtH(hrs) + " uur</small></h2><p>" + esc(p.text) + "</p>" +
-        "<div class='tablewrap'><table class='sched'><thead><tr><th>Week</th><th>Woensdag</th><th>" + (p.id === "ev" ? "Donderdag" : "Vrijdag") + "</th><th>Zondag</th><th>Uren</th><th>Z1–2</th></tr></thead><tbody>" + rows + "</tbody></table></div></div>";
+        "<div class='tablewrap'><table class='sched'><thead><tr><th>Week</th><th>Woensdag</th><th>" + (p.id === "ev" ? "Donderdag" : "Vrijdag") + "</th><th>Zondag</th>" + (state.extra.on ? "<th>Extra (" + S.EXTRA_DAYS[state.extra.day].label.slice(0, 2) + ")</th>" : "") + "<th>Uren</th><th>Z1–2</th></tr></thead><tbody>" + rows + "</tbody></table></div></div>";
     }).join("");
     $("schemaList").innerHTML = out;
     $("schemaList").querySelectorAll("tr[data-w]").forEach(function (tr) {
       tr.addEventListener("click", function () { selWeek = +tr.dataset.w; openPanel = null; location.hash = "week"; });
     });
   }
+
+  // ---------- indeling: winter, daglicht en extra dag ----------
+  // Ritten op dagen zonder geplande training, de afgelopen 28 dagen
+  function freeRides() {
+    const today = todayUTC(), from = today - 28 * DAY, planned = {};
+    WEEKS.forEach(function (wk) { weekEff(wk).forEach(function (e) { if (!e.skip) planned[iso(e.date)] = true; }); });
+    const byDay = {};
+    acts.forEach(function (a) { const t = actTime(a); if (t >= from && t < today && !planned[a.date]) byDay[a.date] = (byDay[a.date] || 0) + a.moving / 60; });
+    return Object.keys(byDay).map(function (d) { return { date: d, min: byDay[d] }; });
+  }
+  function opt(v, label, cur) { return "<option value='" + v + "'" + (String(cur) === String(v) ? " selected" : "") + ">" + label + "</option>"; }
+
+  function renderSetup() {
+    const cur = currentWeek();
+    // binnenlimiet
+    $("inMax").innerHTML = [60, 75, 90, 120, 150].map(function (m) { return opt(m, fmtH(m) + " uur" + (m === 90 ? " (advies)" : ""), state.season.indoorMax); }).join("");
+    // extra dag
+    const ex = state.extra, rec = S.recommendedStart(cur);
+    $("exOn").checked = !!ex.on;
+    let wopts = "";
+    for (let n = Math.max(1, cur); n <= 28; n++) {
+      if (!S.extraAllowed(WEEKS[n])) continue;
+      wopts += opt(n, "Week " + n + " · vanaf " + dstr(WEEKS[n].mon) + (n === rec ? " (advies)" : ""), ex.fromWeek || rec);
+    }
+    $("exFrom").innerHTML = wopts;
+    $("exDay").innerHTML = ["sat", "thu", "tue", "mon"].map(function (d) { return opt(d, S.EXTRA_DAYS[d].label.charAt(0).toUpperCase() + S.EXTRA_DAYS[d].label.slice(1) + (d === "sat" ? " (advies)" : ""), ex.day); }).join("");
+    $("exMax").innerHTML = [45, 60, 75, 90, 120].map(function (m) { return opt(m, fmtH(m) + " uur" + (m === 90 ? " (advies)" : ""), ex.max); }).join("");
+    ["exFrom", "exDay", "exMax"].forEach(function (id) { $(id).disabled = !ex.on; });
+    const cfg = Object.assign({}, ex, { fromWeek: ex.fromWeek || rec });
+    const adv = S.advice({ cur: cur, cfg: cfg, indoorMax: state.season.indoorMax, freeRides: freeRides() });
+    $("exAdvice").innerHTML = adv.map(function (a) {
+      return "<li class='adv " + a.level + "'><b>" + esc(a.title) + "</b>" + esc(a.text) + "</li>";
+    }).join("");
+    renderImpact(cur);
+    renderLight(cur);
+    renderWxNext();
+  }
+
+  // Uren per fase: het oorspronkelijke plan tegenover jouw instellingen
+  function renderImpact(cur) {
+    const rows = PHASES.filter(function (p) { return p.weeks[p.weeks.length - 1] >= cur && p.id !== "ev"; }).map(function (p) {
+      const ws = p.weeks.filter(function (n) { return n >= cur; });
+      let base = 0, mine = 0;
+      ws.forEach(function (n) {
+        base += WEEKS[n].sessions.reduce(function (a, s) { return a + minutes(s.w); }, 0);
+        mine += weekMins(weekEff(WEEKS[n]).filter(function (e) { return !e.skip; }));
+      });
+      const diff = mine - base, k = ws.length;
+      return "<tr><td>" + p.name + "<br><small class='sub'>week " + ws[0] + (k > 1 ? " tot " + ws[k - 1] : "") + "</small></td><td class='num'>" + fmtH(Math.round(base / k)) + "</td><td class='num'>" + fmtH(Math.round(mine / k)) + "</td><td class='num " + (diff < -30 * k ? "neg" : diff > 0 ? "pos" : "") + "'>" + (diff >= 0 ? "+" : "−") + fmtH(Math.round(Math.abs(diff) / k)) + "</td></tr>";
+    }).join("");
+    $("exImpact").innerHTML = "<table class='sched'><thead><tr><th>Fase</th><th>Plan per week</th><th>Met jouw keuzes</th><th>Verschil</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  }
+
+  // Daglicht op zondag tegenover de geplande lange rit
+  function renderLight(cur) {
+    const ws = WEEKS.filter(function (wk) { return wk.n >= cur && wk.n <= 29; });
+    const W = 720, H = 220, l = 34, r = 10, t = 14, b = 30, cw = W - l - r, ch = H - t - b, max = 16 * 60;
+    const step = cw / ws.length, y = function (m) { return t + ch - m / max * ch; };
+    let svg = "<svg viewBox='0 0 " + W + " " + H + "' role='img' aria-label='Daglicht op zondag tegenover de lange rit'>";
+    [0, 4, 8, 12, 16].forEach(function (h) { svg += "<line x1='" + l + "' x2='" + (W - r) + "' y1='" + y(h * 60) + "' y2='" + y(h * 60) + "' class='grid'/><text x='" + (l - 6) + "' y='" + (y(h * 60) + 4) + "' text-anchor='end'>" + h + "u</text>"; });
+    let pts = [], lastM = -1;
+    ws.forEach(function (wk, i) {
+      const sunS = wk.sessions.find(function (x) { return x.day === "sun"; });
+      if (!sunS) return;
+      const e = eff(sunS), planned = minutes(sunS.w), li = S.daylight(e.date);
+      const x = l + i * step + step * 0.18, bw = step * 0.64;
+      const cls = e.place && e.place.where === "binnen" ? "bin" : "bui";
+      svg += "<rect x='" + x.toFixed(1) + "' y='" + y(planned).toFixed(1) + "' width='" + bw.toFixed(1) + "' height='" + (y(0) - y(planned)).toFixed(1) + "' class='" + cls + "'><title>Week " + wk.n + ", zondag " + dstr(e.date) + ": gepland " + fmtH(planned) + ", " + (cls === "bin" ? "binnen " + fmtH(minutes(e.w)) : "buiten") + ", rijlicht " + fmtH(li.usable) + "</title></rect>";
+      pts.push((l + i * step + step / 2).toFixed(1) + "," + y(li.usable).toFixed(1));
+      const m = new Date(e.date).getUTCMonth();
+      if (m !== lastM) { svg += "<text x='" + (l + i * step + 2).toFixed(1) + "' y='" + (H - 10) + "'>" + MONTHS[m].slice(0, 3) + "</text>"; lastM = m; }
+    });
+    svg += "<polyline points='" + pts.join(" ") + "' class='light'/>";
+    svg += "</svg>";
+    $("lightChart").innerHTML = svg;
+  }
+
+  function renderWxNext() {
+    const el = $("wxNext");
+    const days = Object.keys(wx).sort().filter(function (d) { return d >= iso(todayUTC()); }).slice(0, 14);
+    if (!days.length) { el.innerHTML = "<p class='sub'>Weersverwachting laden… Lukt dat niet, dan kiest de app op basis van het seizoen.</p>"; return; }
+    el.innerHTML = "<div class='wxgrid'>" + days.map(function (d) {
+      const t = Date.parse(d + "T00:00:00Z"), v = S.weatherVerdict(wx[d]), f = wx[d];
+      const lvl = v.level === "slecht" ? "in" : v.level === "matig" ? "maybe" : "out";
+      return "<div class='wxday " + lvl + "' title='" + esc(S.weatherLine(f) + (v.why ? ". " + v.why : "")) + "'><b>" + dshort(t) + "</b><span class='num'>" + Math.round(f.tmin) + "°/" + Math.round(f.tmax) + "°</span><span class='num'>" + String(Math.round((f.rain || 0) * 10) / 10).replace(".", ",") + " mm</span><span>" + (v.level === "slecht" ? "binnen" : v.level === "matig" ? "kan" : "buiten") + "</span></div>";
+    }).join("") + "</div><p class='sub'>Bron: Open-Meteo, voor " + S.HOME.name + ". Bijgewerkt " + new Date(wxAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }) + ".</p>";
+  }
+
+  // Weersverwachting ophalen, hooguit eens per drie uur
+  const WX_LS = "alpe-wx-v1";
+  function loadWxCache() { try { const c = JSON.parse(lsGet(WX_LS) || "null"); if (c && c.data) { wx = c.data; wxAt = c.at; } } catch (e) {} }
+  async function loadWx() {
+    if (Date.now() - wxAt < 3 * 3600000 && Object.keys(wx).length) return;
+    try {
+      const r = await fetch(S.FORECAST_URL);
+      if (!r.ok) throw new Error();
+      wx = S.parseForecast(await r.json()); wxAt = Date.now();
+      lsSet(WX_LS, JSON.stringify({ at: wxAt, data: wx }));
+      rematch(); renderAll();
+    } catch (e) { renderWxNext(); }
+  }
+
+  $("inMax").addEventListener("change", function (e) { state.season.indoorMax = +e.target.value; save(); rematch(); renderAll(); toast("Binnenritten maximaal " + fmtH(state.season.indoorMax) + "."); });
+  $("exOn").addEventListener("change", function (e) {
+    state.extra.on = e.target.checked;
+    if (state.extra.on && !state.extra.fromWeek) state.extra.fromWeek = S.recommendedStart(currentWeek());
+    save(); rematch(); renderAll();
+    toast(state.extra.on ? "Extra " + S.EXTRA_DAYS[state.extra.day].label + " vanaf week " + state.extra.fromWeek + "." : "Extra dag uit.");
+  });
+  $("exFrom").addEventListener("change", function (e) { state.extra.fromWeek = +e.target.value; save(); rematch(); renderAll(); });
+  $("exDay").addEventListener("change", function (e) { state.extra.day = e.target.value; save(); rematch(); renderAll(); });
+  $("exMax").addEventListener("change", function (e) { state.extra.max = +e.target.value; save(); rematch(); renderAll(); });
 
   // ---------- Alpe-rekenmodel ----------
   function climbMinutes(Pw, m) {
@@ -498,7 +678,7 @@
   function rematch() {
     const ses = [];
     WEEKS.forEach(function (wk) {
-      wk.sessions.forEach(function (s) { const e = eff(s); if (!e.skip && e.w.kind !== "event") ses.push({ id: e.id, date: e.date, w: e.w }); });
+      weekSessions(wk).forEach(function (s) { const e = eff(s); if (!e.skip && e.w.kind !== "event") ses.push({ id: e.id, date: e.date, w: e.w }); });
     });
     matches = acts.length ? L.match(ses, acts, { hists: hists, ftp: state.ftp, links: state.links, unlinks: state.unlinks }) : {};
   }
@@ -565,14 +745,14 @@
   // ---------- routing ----------
   function route() {
     const h = (location.hash || "#week").slice(1);
-    const v = ["week", "schema", "alpe"].indexOf(h) >= 0 ? h : "week";
-    ["week", "schema", "alpe"].forEach(function (x) { $("v-" + x).hidden = x !== v; });
+    const v = ["week", "schema", "indeling", "alpe"].indexOf(h) >= 0 ? h : "week";
+    ["week", "schema", "indeling", "alpe"].forEach(function (x) { $("v-" + x).hidden = x !== v; });
     document.querySelectorAll("nav.tabs a").forEach(function (a) { if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     renderAll();
   }
   function renderAll() {
     $("daysLeft").textContent = Math.max(0, Math.round((EVENT - todayUTC()) / DAY));
-    renderStrip(); renderWeek(); renderSchema(); renderCalc(); renderStravaBar();
+    renderStrip(); renderWeek(); renderSchema(); renderSetup(); renderCalc(); renderStravaBar();
   }
   window.addEventListener("hashchange", function () { route(); window.scrollTo(0, 0); });
 
@@ -603,7 +783,9 @@
 
   // ---------- start ----------
   loadHistCache();
+  loadWxCache();
   syncInputs(); route();
+  loadWx();
   (async function () {
     const qs = new URLSearchParams(location.search), back = qs.get("strava"), reason = qs.get("reason");
     if (back) { qs.delete("strava"); qs.delete("reason"); history.replaceState(null, "", location.pathname + (qs.toString() ? "?" + qs : "") + location.hash); }

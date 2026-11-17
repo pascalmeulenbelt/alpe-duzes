@@ -12,6 +12,21 @@ Persoonlijke trainingsapp naar 6× Alpe d'Huez op 3 juni 2027. Draait op Netlify
 - **Historie**: de app haalt de ritten van de 12 maanden vóór het plan op en toont per week je gereden uren, naast de weken van het plan.
 - Voortgang wordt per Strava-account opgeslagen, dus telefoon en laptop tonen hetzelfde.
 
+### Winter, daglicht en weer (tab Indeling)
+
+- Per buitentraining kiest de app **buiten of binnen** op basis van de weersverwachting voor Nijverdal (Open-Meteo, geen sleutel nodig, 16 dagen vooruit) en het daglicht (zonsopkomst en -ondergang worden berekend).
+- Binnen wordt een lange rit een **binnenversie** van standaard maximaal 1:30 (instelbaar): blokken blijven, zone 2 wordt korter en iets hoger. Een uur Zwift is ongeveer 1:15 tot 1:30 buiten.
+- Buiten maar langer dan het daglicht? Dan wordt de rit ingekort tot het licht, met een uiterlijke vertrektijd.
+- Verder dan 16 dagen vooruit plant de app winterzondagen (december tot en met februari) als binnenrit; zodra er een verwachting is, beslist het weer.
+- Per training kies je altijd zelf met **Toch buiten** of **Toch binnen**.
+
+### Extra trainingsdag
+
+- Zet vanaf een gekozen week een vierde dag aan (maandag, dinsdag, donderdag of zaterdag) met een maximale duur.
+- Altijd zone 2; de eerste twee keer maximaal een uur. Vervalt in herstelweken, de taperweek en de Alpe-week.
+- Op zaterdag in de klimfase (vanaf week 17) bevat hij één blok Alpe-tempo: zaterdag en zondag als blok.
+- De app geeft advies over wanneer je begint, welke dag en hoe lang, en laat per fase zien wat het met je weekuren doet.
+
 ### Koppelen en overeenkomst
 
 - Alleen ritten op **dezelfde datum** als een training worden automatisch gekoppeld. Meerdere ritten op die dag? Dan gaat de best passende voor.
@@ -87,6 +102,7 @@ Deploy daarna opnieuw (*Deploys* → *Trigger deploy*), zodat de functies de var
 public/                  de app zelf
   index.html, app.css    interface
   plan.js                het trainingsplan (weken, sessies, coachteksten)
+  season.js              daglicht, weer, binnenversies, extra dag
   logic.js               inkorten van trainingen, Strava-matching en Zwift-export
   app.js                 interface, opslag, Strava-synchronisatie
   sw.js, manifest        installeerbaar en offline bruikbaar
